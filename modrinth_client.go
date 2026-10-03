@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -52,30 +55,6 @@ func (mc ModrinthClient) doRequest(req *http.Request, s any) error {
 	} else {
 		return fmt.Errorf("Server Returned %d", resp.StatusCode)
 	}
-}
-
-func (mc ModrinthClient) downloadFile(req *http.Request, fileLocation string, fileName string) error {
-	fmt.Printf("Doing Request %s\n", req.URL.String())
-
-	resp, err := mc.client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode == http.StatusOK {
-		out, err := os.Create(fileLocation + fileName)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // Creates a search request with the given search query. Stores the returned json in the given struct.
@@ -168,7 +147,29 @@ func (mc ModrinthClient) GetVersion(projectID string, s *Version) error {
 	return nil
 }
 
-func (mc ModrinthClient) GetFile(file File, location string) error {
+// A custom Writer
+type ProgressTracker struct {
+	Total      int
+	Downloaded int
+}
+
+func (pt *ProgressTracker) Write(p []byte) (int, error) {
+	n := len(p)
+	pt.Downloaded += n
+	pt.showProgress()
+
+	return n, nil
+}
+
+func (pt *ProgressTracker) showProgress() {
+	downloadMB := float64(pt.Downloaded) / (1024 * 1024)
+	totalMB := float64(pt.Total) / (1024 * 1024)
+	percent := (float64(pt.Downloaded) / float64(pt.Total)) * 100
+	fmt.Printf("\rProgress: %05.2fMB/%05.2fMB (%06.2f%%)", downloadMB, totalMB, percent)
+}
+
+// Downloads the file to the path. If the location parameter is empty mods is
+func (mc ModrinthClient) DownloadFile(file File, location string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -177,10 +178,45 @@ func (mc ModrinthClient) GetFile(file File, location string) error {
 		return err
 	}
 
-	err = mc.downloadFile(req, location, file.Filename)
+	fmt.Printf("Doing Request %s\n", req.URL.String())
+
+	resp, err := mc.client.Do(req)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Server Returned %v", resp.StatusCode)
+	}
+
+	if strings.TrimSpace(location) == "" {
+		location = "mods"
+	}
+
+	stat, err := os.Stat(location)
+
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(location, 0750); err != nil {
+			return err
+		}
+	} else if !stat.IsDir() {
+		return fmt.Errorf("Given location %v is not a dir", location)
+	}
+
+	out, err := os.Create(filepath.Join(location, file.Filename))
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	tracker := &ProgressTracker{file.Size, 0}
+
+	fmt.Printf("Dowloading %v to %v directory\n", file.Filename, location)
+
+	reader := io.TeeReader(resp.Body, tracker)
+
+	_, err = io.Copy(out, reader)
+	fmt.Println()
+
+	return err
 }

@@ -13,7 +13,7 @@ func main() {
 		return
 	}
 
-	modID := search.Hits[0].ProjectID
+	modID := search.Hits[1].ProjectID
 	var versions ProjectsVersions
 	if err := client.SearchProjectVersions(modID, &versions); err != nil {
 		fmt.Println(err.Error())
@@ -22,13 +22,8 @@ func main() {
 
 	file := versions[0].Files[0]
 
-	if err := client.GetFile(file, ""); err != nil {
+	if err := client.DownloadFile(file, ""); err != nil {
 		fmt.Println(err.Error())
 		return
 	}
-
-	fmt.Println("Search Results")
-	fmt.Println(search)
-	fmt.Println("Version Results")
-	fmt.Println(versions)
 }
