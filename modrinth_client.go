@@ -12,10 +12,13 @@ import (
 
 type ModrinthClient struct {
 	client *http.Client
+	env    EnvInfo
 }
 
-func NewModrinthClient(client *http.Client) ModrinthClient {
-	return ModrinthClient{client: client}
+func NewModrinthClient(modloader string, minecraftVersion string) ModrinthClient {
+	client := &http.Client{}
+	env := NewEnv(modloader, minecraftVersion)
+	return ModrinthClient{client: client, env: env}
 }
 
 // Creates a request to given url.
@@ -76,11 +79,11 @@ func (mc ModrinthClient) downloadFile(req *http.Request, fileLocation string, fi
 }
 
 // Creates a search request with the given search query. Stores the returned json in the given struct.
-func (mc ModrinthClient) SearchMods(env EnvInfo, query string, s *Search) error {
+func (mc ModrinthClient) SearchMods(query string, s *Search) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	facet := NewFacet(env, "mod")
+	facet := NewFacet(mc.env, "mod")
 
 	ub := NewUrlBuilder("", nil, nil)
 
@@ -106,7 +109,7 @@ func (mc ModrinthClient) SearchMods(env EnvInfo, query string, s *Search) error 
 	return nil
 }
 
-func (mc ModrinthClient) GetProjectVersions(env EnvInfo, modID string, s *ProjectsVersions) error {
+func (mc ModrinthClient) SearchProjectVersions(modID string, s *ProjectsVersions) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
@@ -116,8 +119,8 @@ func (mc ModrinthClient) GetProjectVersions(env EnvInfo, modID string, s *Projec
 	ub.AddPath(modID)
 	ub.AddPath("version")
 
-	ub.AddParameter("loaders", fmt.Sprintf("[\"%s\"]", env.modloader))
-	ub.AddParameter("game_versions", fmt.Sprintf("[\"%s\"]", env.minecraftVersion))
+	ub.AddParameter("loaders", fmt.Sprintf("[\"%s\"]", mc.env.modloader))
+	ub.AddParameter("game_versions", fmt.Sprintf("[\"%s\"]", mc.env.minecraftVersion))
 	ub.AddParameter("include_changelog", "false")
 
 	u, err := ub.String()
@@ -138,7 +141,7 @@ func (mc ModrinthClient) GetProjectVersions(env EnvInfo, modID string, s *Projec
 	return nil
 }
 
-func (mc ModrinthClient) GetVersion(env EnvInfo, projectID string, s *Version) error {
+func (mc ModrinthClient) GetVersion(projectID string, s *Version) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 

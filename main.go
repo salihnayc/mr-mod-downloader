@@ -2,25 +2,33 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 )
 
-var client = &http.Client{}
-var mr = NewModrinthClient(client)
-
 func main() {
-	env := NewEnv("fabric", "26.2")
-	var sr Version
+	client := NewModrinthClient("fabric", "26.3")
 
-	err := mr.GetVersion(env, "wpTNXtBM", &sr)
-	if err != nil {
+	var search Search
+	if err := client.SearchMods("sodium", &search); err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	fmt.Println(sr)
+	modID := search.Hits[0].ProjectID
+	var versions ProjectsVersions
+	if err := client.SearchProjectVersions(modID, &versions); err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 
-	file := sr.Files[0]
+	file := versions[0].Files[0]
 
-	mr.GetFile(file, "./")
+	if err := client.GetFile(file, ""); err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Println("Search Results")
+	fmt.Println(search)
+	fmt.Println("Version Results")
+	fmt.Println(versions)
 }
